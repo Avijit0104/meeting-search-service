@@ -7,3 +7,4 @@ data/*
 .env
 *.egg-info/
 .pytest_cache/
+constraints.txt
