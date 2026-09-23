@@ -1,0 +1,9 @@
+services:
+  meeting-search-service:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - WHISPER_MODEL_SIZE=base
