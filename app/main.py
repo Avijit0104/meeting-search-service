@@ -6,6 +6,7 @@ from app.database import Base, engine, get_db, SessionLocal
 from app.config import settings
 from app.services.transcription import transcribe_audio
 from app import models
+from app.services.answer import generate_answer
 
 Base.metadata.create_all(bind=engine)
 
@@ -42,25 +43,14 @@ def process_meeting(meeting_id: int, file_path: str):
         db.close()
 
 
-@app.post("/meetings")
-def upload_meeting(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-):
-    file_path = str(Path(settings.UPLOAD_DIR) / file.filename)
-    with open(file_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+from pydantic import BaseModel
 
-    meeting = models.Meeting(filename=file.filename, status="processing")
-    db.add(meeting)
-    db.commit()
-    db.refresh(meeting)
+class AskRequest(BaseModel):
+    question: str
 
-    background_tasks.add_task(process_meeting, meeting.id, file_path)
-
-    return {"id": meeting.id, "filename": meeting.filename, "status": meeting.status}
-
+@app.post("/ask")
+def ask(request: AskRequest, db: Session = Depends(get_db)):
+    return generate_answer(request.question, db)
 
 @app.get("/meetings/{meeting_id}")
 def get_meeting(meeting_id: int, db: Session = Depends(get_db)):
