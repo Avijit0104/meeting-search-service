@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from fastapi import FastAPI, Depends, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, Depends, UploadFile, File, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -44,6 +44,13 @@ def process_meeting(meeting_id: int, file_path: str):
     finally:
         db.close()
 
+AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".webm", ".mp4"}
+
+def looks_like_audio(file: UploadFile) -> bool:
+    if file.content_type and file.content_type.startswith("audio/"):
+        return True
+    ext = Path(file.filename).suffix.lower()
+    return ext in AUDIO_EXTENSIONS
 
 @app.post("/meetings")
 def upload_meeting(
@@ -51,6 +58,15 @@ def upload_meeting(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    if not looks_like_audio(file):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Doesn't look like an audio file (content-type: {file.content_type}, filename: {file.filename})",
+        )
+
     file_path = str(Path(settings.UPLOAD_DIR) / file.filename)
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
@@ -63,7 +79,6 @@ def upload_meeting(
     background_tasks.add_task(process_meeting, meeting.id, file_path)
 
     return {"id": meeting.id, "filename": meeting.filename, "status": meeting.status}
-
 
 @app.get("/meetings/{meeting_id}")
 def get_meeting(meeting_id: int, db: Session = Depends(get_db)):
