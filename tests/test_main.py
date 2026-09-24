@@ -188,3 +188,28 @@ def test_other_sources_empty_when_only_one_meeting_matches(mock_transcribe):
 
     assert data["citation"] is not None
     assert data["other_sources"] == []
+
+@patch("app.main.transcribe_audio")
+def test_same_filename_uploaded_twice_does_not_collide(mock_transcribe):
+    # First upload: distinct content
+    mock_transcribe.return_value = [
+        {"start": 0.0, "end": 2.0, "text": "This is the first meeting content."},
+    ]
+    r1 = client.post("/meetings", files={"file": ("duplicate.wav", b"fake1", "audio/wav")})
+    id1 = r1.json()["id"]
+
+    # Second upload, same original filename, different content
+    mock_transcribe.return_value = [
+        {"start": 0.0, "end": 2.0, "text": "This is the second meeting content."},
+    ]
+    r2 = client.post("/meetings", files={"file": ("duplicate.wav", b"fake2", "audio/wav")})
+    id2 = r2.json()["id"]
+
+    assert id1 != id2
+
+    t1 = client.get(f"/meetings/{id1}/transcript").json()
+    t2 = client.get(f"/meetings/{id2}/transcript").json()
+
+    # each meeting must have kept its own distinct content, not the other's
+    assert t1["segments"][0]["text"] == "This is the first meeting content."
+    assert t2["segments"][0]["text"] == "This is the second meeting content."
