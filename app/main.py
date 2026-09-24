@@ -67,18 +67,23 @@ def upload_meeting(
             detail=f"Doesn't look like an audio file (content-type: {file.content_type}, filename: {file.filename})",
         )
 
-    file_path = str(Path(settings.UPLOAD_DIR) / file.filename)
-    with open(file_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-
     meeting = models.Meeting(filename=file.filename, status="processing")
     db.add(meeting)
     db.commit()
     db.refresh(meeting)
 
+    # store on disk under a name unique to this meeting, independent of the
+    # original filename, so two uploads with the same name never collide
+    ext = Path(file.filename).suffix
+    stored_filename = f"{meeting.id}{ext}"
+    file_path = str(Path(settings.UPLOAD_DIR) / stored_filename)
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
     background_tasks.add_task(process_meeting, meeting.id, file_path)
 
     return {"id": meeting.id, "filename": meeting.filename, "status": meeting.status}
+
 
 @app.get("/meetings/{meeting_id}")
 def get_meeting(meeting_id: int, db: Session = Depends(get_db)):
