@@ -89,9 +89,8 @@ def upload_meeting(
 def get_meeting(meeting_id: int, db: Session = Depends(get_db)):
     meeting = db.query(models.Meeting).filter(models.Meeting.id == meeting_id).first()
     if not meeting:
-        return {"error": "not found"}
+        raise HTTPException(status_code=404, detail="Meeting not found")
     return {"id": meeting.id, "filename": meeting.filename, "status": meeting.status}
-
 
 class AskRequest(BaseModel):
     question: str

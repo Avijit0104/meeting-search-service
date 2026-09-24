@@ -213,3 +213,35 @@ def test_same_filename_uploaded_twice_does_not_collide(mock_transcribe):
     # each meeting must have kept its own distinct content, not the other's
     assert t1["segments"][0]["text"] == "This is the first meeting content."
     assert t2["segments"][0]["text"] == "This is the second meeting content."
+
+
+def test_get_meeting_404_for_nonexistent():
+    response = client.get("/meetings/99999")
+    assert response.status_code == 404
+
+
+def test_upload_rejects_missing_filename():
+    response = client.post("/meetings", files={"file": ("", b"data", "audio/wav")})
+    assert response.status_code in (400, 422)  # FastAPI may reject empty filename at multipart level
+
+
+def test_upload_rejects_non_audio_file():
+    response = client.post("/meetings", files={"file": ("notes.txt", b"hello", "text/plain")})
+    assert response.status_code == 400
+    assert "audio" in response.json()["detail"].lower()
+
+
+def test_upload_accepts_audio_extension_even_with_generic_content_type():
+    response = client.post(
+        "/meetings", files={"file": ("recording.wav", b"fakebytes", "application/octet-stream")}
+    )
+    assert response.status_code == 200
+
+
+@patch("app.main.transcribe_audio")
+def test_upload_accepts_audio_extension_even_with_generic_content_type(mock_transcribe):
+    mock_transcribe.return_value = [{"start": 0.0, "end": 1.0, "text": "test"}]
+    response = client.post(
+        "/meetings", files={"file": ("recording.wav", b"fakebytes", "application/octet-stream")}
+    )
+    assert response.status_code == 200
