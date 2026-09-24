@@ -95,3 +95,33 @@ class AskRequest(BaseModel):
 @app.post("/ask")
 def ask(request: AskRequest, db: Session = Depends(get_db)):
     return generate_answer(request.question, db)
+
+
+
+@app.get("/meetings/{meeting_id}/transcript")
+def get_transcript(meeting_id: int, db: Session = Depends(get_db)):
+    meeting = db.query(models.Meeting).filter(models.Meeting.id == meeting_id).first()
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+    if meeting.status != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Transcript not available yet (status: {meeting.status})",
+        )
+
+    segments = (
+        db.query(models.TranscriptSegment)
+        .filter(models.TranscriptSegment.meeting_id == meeting_id)
+        .order_by(models.TranscriptSegment.start_time)
+        .all()
+    )
+
+    return {
+        "meeting_id": meeting.id,
+        "filename": meeting.filename,
+        "segments": [
+            {"start": s.start_time, "end": s.end_time, "text": s.text}
+            for s in segments
+        ],
+    }
