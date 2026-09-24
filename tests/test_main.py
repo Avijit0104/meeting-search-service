@@ -106,3 +106,46 @@ def test_ask_returns_no_answer_for_unrelated_question(mock_transcribe):
     data = response.json()
     assert data["citation"] is None
     assert "couldn't find" in data["answer"].lower()
+
+
+@patch("app.main.transcribe_audio")
+def test_transcript_returns_segments_in_order(mock_transcribe):
+    mock_transcribe.return_value = FAKE_SEGMENTS
+    response = client.post("/meetings", files={"file": ("test.wav", b"fake", "audio/wav")})
+    meeting_id = response.json()["id"]
+
+    transcript = client.get(f"/meetings/{meeting_id}/transcript")
+    assert transcript.status_code == 200
+    data = transcript.json()
+    assert data["meeting_id"] == meeting_id
+    assert len(data["segments"]) == 3
+    # confirm chronological order
+    starts = [s["start"] for s in data["segments"]]
+    assert starts == sorted(starts)
+
+
+def test_transcript_404_for_nonexistent_meeting():
+    response = client.get("/meetings/99999/transcript")
+    assert response.status_code == 404
+
+
+@patch("app.main.transcribe_audio")
+def test_transcript_409_when_not_completed(mock_transcribe):
+    # simulate a meeting stuck in "processing" by not letting the background task run fully —
+    # easiest way: query the DB right after upload, before checking status
+    mock_transcribe.return_value = FAKE_SEGMENTS
+    response = client.post("/meetings", files={"file": ("test.wav", b"fake", "audio/wav")})
+    meeting_id = response.json()["id"]
+
+    # manually force status back to "processing" to simulate the in-flight state,
+    # since TestClient runs background tasks synchronously so it's already "completed" by now
+    db = TestingSessionLocal()
+    meeting = db.query(main_module.models.Meeting).filter(
+        main_module.models.Meeting.id == meeting_id
+    ).first()
+    meeting.status = "processing"
+    db.commit()
+    db.close()
+
+    transcript = client.get(f"/meetings/{meeting_id}/transcript")
+    assert transcript.status_code == 409
