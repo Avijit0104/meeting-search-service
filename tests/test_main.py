@@ -149,3 +149,42 @@ def test_transcript_409_when_not_completed(mock_transcribe):
 
     transcript = client.get(f"/meetings/{meeting_id}/transcript")
     assert transcript.status_code == 409
+
+
+
+@patch("app.main.transcribe_audio")
+def test_other_sources_includes_second_meeting_when_relevant(mock_transcribe):
+    # Meeting 1: launch decision
+    mock_transcribe.return_value = [
+        {"start": 0.0, "end": 3.0, "text": "We decided to launch the product next week."},
+    ]
+    client.post("/meetings", files={"file": ("meeting1.wav", b"fake", "audio/wav")})
+
+    # Meeting 2: also discusses launch, different meeting
+    mock_transcribe.return_value = [
+        {"start": 0.0, "end": 3.0, "text": "The launch date was confirmed for next week."},
+    ]
+    client.post("/meetings", files={"file": ("meeting2.wav", b"fake", "audio/wav")})
+
+    response = client.post("/ask", json={"question": "when is the launch"})
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["citation"] is not None
+    assert "other_sources" in data
+    # both meetings discuss launch — expect the second to show up as a supporting source
+    all_filenames = {data["citation"]["filename"]} | {s["filename"] for s in data["other_sources"]}
+    assert "meeting1.wav" in all_filenames
+    assert "meeting2.wav" in all_filenames
+
+
+@patch("app.main.transcribe_audio")
+def test_other_sources_empty_when_only_one_meeting_matches(mock_transcribe):
+    mock_transcribe.return_value = FAKE_SEGMENTS
+    client.post("/meetings", files={"file": ("test.wav", b"fake", "audio/wav")})
+
+    response = client.post("/ask", json={"question": "what did we decide about the launch"})
+    data = response.json()
+
+    assert data["citation"] is not None
+    assert data["other_sources"] == []
