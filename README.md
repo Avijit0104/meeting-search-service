@@ -32,6 +32,8 @@ POST /ask → TF-IDF over all TranscriptSegments → cosine similarity ranking
 Requires Python 3.11 and `ffmpeg` installed and on PATH (Whisper shells out to it for audio decoding).
 
 ```bash
+git clone https://github.com/Avijit0104/meeting-search-service.git
+cd meeting-search-service
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\Activate.ps1
 pip install "setuptools<82" wheel
